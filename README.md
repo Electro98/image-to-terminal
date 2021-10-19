@@ -2,9 +2,11 @@
 
 ## Usage
 
-On windows: `python image-converter.py [image-name] [width in terminal] [other-settings]`
+On windows: `python image-converter.py [image-name] -w [width in terminal] [other-settings]`
 
-On linux: `./image-converter.py [image-name] [width in terminal] [other-settings]`
+On linux: `./image-converter.py [image-name] -w [width in terminal] [other-settings]`
+
+Now available help!: `use --help or -h`
 
 ## Result
 

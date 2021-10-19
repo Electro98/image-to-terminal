@@ -3,43 +3,43 @@
 '''
 Developed by Electr98
 '''
-import sys
+import argparse
 
 from sty import fg, bg, rs
 from PIL import Image, ImageDraw, ImageFont
-from random import randint
+from random import randint, choice
 
 
 def bright(color: tuple) -> tuple:
     return tuple(map(lambda x: min((x + 20), 255), color))
 
 
-def generate_random_text(width: int) -> str:
-    return ''.join([chr(randint(33, 126)) for _ in range(width)])
+def generate_random_text(width: int, chars=None) -> str:
+    return ''.join((choice(chars) if chars else chr(randint(33, 126)) for _ in range(width)))
 
 
 def generate_random_block(width: int) -> str:
-    return ''.join([chr(randint(9600, 9631)) for _ in range(width)])
+    return ''.join((chr(randint(9600, 9631)) for _ in range(width)))
 
 
-def generate_blocks(width: int) -> str:
-    return '▚' * width
+def generate_blocks(width: int, chars=None) -> str:
+    return (chars * width)[:width] if chars else '▚' * width
 
 
-def generate_filler_text(width: int, mode: str) -> str:
+def generate_filler_text(width: int, mode: str, chars=None) -> str:
     if mode == 'b':
-        return generate_blocks(width)
+        return generate_blocks(width, chars)
     elif mode == 'rb':
         return generate_random_block(width)
     else:
-        return generate_random_text(width)
+        return generate_random_text(width, chars)
 
 
-def image_to_text(image: Image, width: int, mode='r') -> str:
+def image_to_text(image: Image, width: int, mode='r', chars=None) -> str:
     shrink_factor = image.width // width
     shrinked_img = image.reduce((shrink_factor, shrink_factor * 2))
     width, height = shrinked_img.size
-    random_text = generate_filler_text(width * height, mode)
+    random_text = generate_filler_text(width * height, mode, chars)
     buff = f'{bg(10, 10, 10)}'
     for j in range(height):
         for i in range(width):
@@ -49,16 +49,15 @@ def image_to_text(image: Image, width: int, mode='r') -> str:
     return f'{buff}{rs.bg}'
 
 
-def convert_image(image: Image, width: int, mode='r') -> Image:
+def convert_image(image: Image, width: int, mode='r', chars=None) -> Image:
     shrink_factor_x = image.width / width
     shrink_factor_y = int(shrink_factor_x * 4 / 3)
     shrinked_img = image.reduce((int(shrink_factor_x), shrink_factor_y))
     width, height = shrinked_img.size
-    image_text = image_to_text(image, width)
     font = ImageFont.FreeTypeFont('DejaVu-Sans-Mono.ttf', 10)
     new_image = Image.new('RGB', (width * 6, height * 8 + 3), (20, 20, 20))
     canvas = ImageDraw.Draw(new_image)
-    random_text = generate_filler_text(width * height, mode)
+    random_text = generate_filler_text(width * height, mode, chars)
     for j in range(height):
         for i in range(width):
             color = shrinked_img.getpixel((i, j))
@@ -67,15 +66,22 @@ def convert_image(image: Image, width: int, mode='r') -> Image:
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print(f'USAGE: {sys.argv[0]} <image_file> <width_text(optional)>')
-        exit(1)
-    args = sys.argv[1:]
-    with Image.open(args[0]) as input_img:
-        str_img = image_to_text(input_img,
-                                80 if len(args) < 2 else int(args[1]),
-                                '' if len(args) < 3 else args[2])
+    parser = argparse.ArgumentParser(description='Convert image to text')
+    parser.add_argument('src',
+                        help='Converted image')
+    parser.add_argument('--width', '-w', default=80, type=int,
+                        help='Width of image in terminal(in chars)')
+    parser.add_argument('--mode', '-m', default='r',
+                        help='Convertion image mode')
+    parser.add_argument('--png_width', '-pw', default=0, type=int,
+                        help='Width of saved image(in chars). '
+                        + 'If 0(by default) image isn\'t saving')
+    parser.add_argument('--symbols', '-s', default=None,
+                        help='If you want to use your pull of chars')
+    args = vars(parser.parse_args())
+    with Image.open(args['src']) as input_img:
+        str_img = image_to_text(input_img, args['width'], args['mode'], args['symbols'])
         print(str_img)
-        if len(args) >= 4:
-            result_img = convert_image(input_img, int(args[3]), args[2])
-            result_img.save(f'{args[0].split(".")[0]}_{args[2]}_result.png', 'PNG')
+        if args.get('png_width'):
+            result_img = convert_image(input_img, args['png_width'], args['mode'], args['symbols'])
+            result_img.save(f'{args["src"].split(".")[0]}_{args["mode"]}_result.png', 'PNG')
