@@ -14,55 +14,85 @@ def bright(color: tuple) -> tuple:
     return tuple(map(lambda x: min((x + 20), 255), color))
 
 
-def generate_random_text(width: int, chars=None) -> str:
-    return ''.join((choice(chars) if chars else chr(randint(33, 126)) for _ in range(width)))
+def load_palette_from_gif(gif: Image):
+    palette_data = gif.global_palette.palette
+    return [tuple(map(int, palette_data[i:i + 3])) for i in range(0, len(palette_data), 3)]
 
 
-def generate_random_block(width: int) -> str:
-    return ''.join((chr(randint(9600, 9631)) for _ in range(width)))
+def load_frames_from_gif(gif: Image, width: int, height: int):
+    frames = []
+    for i in range(gif.n_frames):
+        gif.seek(i)
+        frames.append(gif.resize((width, height), Image.ANTIALIAS).getdata())
+    return frames
 
 
-def generate_blocks(width: int, chars=None) -> str:
-    return (chars * width)[:width] if chars else '▚' * width
+def load_data_from_gif(gif: Image, width: int, height: int):
+    palette = load_palette_from_gif(gif)
+    return [[palette[pix] for pix in frame] for frame in load_frames_from_gif(gif, width, height)]
 
 
-def generate_filler_text(width: int, mode: str, chars=None) -> str:
-    if mode == 'b':
-        return generate_blocks(width, chars)
-    elif mode == 'rb':
-        return generate_random_block(width)
-    else:
-        return generate_random_text(width, chars)
+class FillerGenerator(object):
+    """class FillerGenerator:
+        - Presents simple text generator to fill images.
+    """
+    @classmethod
+    def generate_random_text(cls, width: int, chars=None) -> str:
+        return ''.join((choice(chars) if chars else chr(randint(33, 126)) for _ in range(width)))
+
+    @classmethod
+    def generate_blocks(cls, width: int, chars=None) -> str:
+        return (chars * width)[:width] if chars else '▚' * width
+
+    @classmethod
+    def generate_random_block(cls, width: int) -> str:
+        return ''.join((chr(randint(9600, 9631)) for _ in range(width)))
+
+    @classmethod
+    def generate(cls, width: int, mode: str, chars=None) -> str:
+        if mode == 'b':
+            return cls.generate_blocks(width, chars)
+        elif mode == 'rb':
+            return cls.generate_random_block(width)
+        else:
+            return cls.generate_random_text(width, chars)
 
 
-def image_to_text(image: Image, width: int, mode='r', chars=None) -> str:
-    shrink_factor = image.width // width
-    shrinked_img = image.reduce((shrink_factor, shrink_factor * 2))
-    width, height = shrinked_img.size
-    random_text = generate_filler_text(width * height, mode, chars)
+def image_data_to_text(pixel_data, width: int, height: int, filler_text: str) -> str:
     buff = f'{bg(10, 10, 10)}'
     for j in range(height):
         for i in range(width):
-            color = shrinked_img.getpixel((i, j))
-            buff = f'{buff}{fg(*color)}{random_text[j * width + i]}{rs.fg}'
+            color = pixel_data[j * width + i]
+            buff = f'{buff}{fg(*color)}{filler_text[j * width + i]}{rs.fg}'
         buff = f'{buff}\n'
     return f'{buff}{rs.bg}'
 
 
-def convert_image(image: Image, width: int, mode='r', chars=None) -> Image:
-    shrink_factor_x = image.width / width
-    shrink_factor_y = int(shrink_factor_x * 4 / 3)
-    shrinked_img = image.reduce((int(shrink_factor_x), shrink_factor_y))
-    width, height = shrinked_img.size
+def image_to_text(image: Image, width: int, mode='r', chars=None) -> str:
+    height = round(image.height * width / (image.width * 2))
+    shrinked_img = image.resize((width, height), Image.ANTIALIAS)
+    random_text = FillerGenerator.generate(width * height, mode, chars)
+    pixel_data = shrinked_img.getdata()
+    return image_data_to_text(pixel_data, width, height, random_text)
+
+
+def image_data_to_timage(pixel_data, width: int, height: int, filler_text: str) -> Image:
     font = ImageFont.FreeTypeFont('DejaVu-Sans-Mono.ttf', 10)
     new_image = Image.new('RGB', (width * 6, height * 8 + 3), (20, 20, 20))
     canvas = ImageDraw.Draw(new_image)
-    random_text = generate_filler_text(width * height, mode, chars)
     for j in range(height):
         for i in range(width):
-            color = shrinked_img.getpixel((i, j))
-            canvas.text((i * 6, j * 8), random_text[j * width + i], bright(color), font, anchor='la')
+            color = pixel_data[j * width + i]
+            canvas.text((i * 6, j * 8), filler_text[j * width + i], bright(color), font, anchor='la')
     return new_image.crop((0, 3, width * 6, height * 8 + 3))
+
+
+def image_to_timage(image: Image, width: int, mode='r', chars=None) -> Image:
+    height = round(image.height * width / (image.width * 2))
+    shrinked_img = image.resize((width, height), Image.ANTIALIAS)
+    pixel_data = shrinked_img.getdata()
+    random_text = FillerGenerator.generate(width * height, mode, chars)
+    return image_data_to_timage(pixel_data, width, height, random_text)
 
 
 if __name__ == '__main__':
@@ -80,8 +110,24 @@ if __name__ == '__main__':
                         help='If you want to use your pull of chars')
     args = vars(parser.parse_args())
     with Image.open(args['src']) as input_img:
-        str_img = image_to_text(input_img, args['width'], args['mode'], args['symbols'])
-        print(str_img)
-        if args.get('png_width'):
-            result_img = convert_image(input_img, args['png_width'], args['mode'], args['symbols'])
-            result_img.save(f'{args["src"].split(".")[0]}_{args["mode"]}_result.png', 'PNG')
+        if args['src'].split('.')[-1] == 'gif':
+            # Experimental feature
+            # be ready for MASSIVE gif and slow processing
+            print('This is experimetal feature. You\'re warned!')
+            width = args['width']
+            height = round(input_img.height * width / input_img.width)
+            pixel_datas = load_data_from_gif(input_img, width, height)
+            frames = []
+            for pixel_data in pixel_datas:
+                text = FillerGenerator.generate(width * height, args['mode'], args['symbols'])
+                frames.append(image_data_to_timage(pixel_data, width, height, text))
+            frames[0].save(f'{args["src"].split(".")[0]}_{args["mode"]}_result.gif',
+                           'GIF', append_images=frames[1:], save_all=True,
+                           duration=input_img.info['duration'], loop=0,
+                           optimize=True)
+        else:
+            str_img = image_to_text(input_img, args['width'], args['mode'], args['symbols'])
+            print(str_img)
+            if args['png_width']:
+                result_img = image_to_timage(input_img, args['png_width'], args['mode'], args['symbols'])
+                result_img.save(f'{args["src"].split(".")[0]}_{args["mode"]}_result.png', 'PNG')

@@ -1,0 +1,4 @@
+# for image processing
+pillow
+# for colored text in terminal
+sty
