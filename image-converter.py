@@ -4,6 +4,7 @@
 Developed by Electr98
 '''
 import argparse
+import os
 
 from sty import fg, bg, rs
 from PIL import Image, ImageDraw, ImageFont
@@ -88,7 +89,7 @@ def image_data_to_timage(pixel_data, width: int, height: int, filler_text: str) 
 
 
 def image_to_timage(image: Image, width: int, mode='r', chars=None) -> Image:
-    height = round(image.height * width / (image.width * 2))
+    height = round(image.height * (width * 6 / image.width) / 8)
     shrinked_img = image.resize((width, height), Image.ANTIALIAS)
     pixel_data = shrinked_img.getdata()
     random_text = FillerGenerator.generate(width * height, mode, chars)
@@ -96,6 +97,8 @@ def image_to_timage(image: Image, width: int, mode='r', chars=None) -> Image:
 
 
 if __name__ == '__main__':
+    # For support mingw64
+    os.system("")
     parser = argparse.ArgumentParser(description='Convert image to text')
     parser.add_argument('src',
                         help='Converted image')
