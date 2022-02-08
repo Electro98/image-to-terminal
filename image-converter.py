@@ -10,6 +10,54 @@ from sty import fg, bg, rs
 from PIL import Image, ImageDraw, ImageFont
 from random import randint, choice
 
+from font_settings import hsv_chars
+
+
+def RGB_to_HSV(r, g, b):
+    v = max(r, g, b)
+    c = v - min(r, g, b)
+    if not c:
+        h = 0
+    elif v == r:
+        h = 60 * (g - b) / c
+    elif v == g:
+        h = 60 * (2 + (b - r) / c)
+    else:
+        h = 60 * (4 + (r - g) / c)
+    s = 0 if not v else c / v
+    return h, s, v / 255
+
+
+def HSV_to_RGB(h, s, v):
+    h %= 360
+    c = v * s
+    x = c * (1 - abs(h / 60 % 2 - 1))
+    if 0 <= h < 60:
+        r, g, b = c, x, 0
+    elif h < 120:
+        r, g, b = x, c, 0
+    elif h < 180:
+        r, g, b = 0, c, x
+    elif h < 240:
+        r, g, b = 0, x, c
+    elif h < 300:
+        r, g, b = x, 0, c
+    else:
+        r, g, b = c, 0, x
+    m = v - c
+    return round((r + m) * 255), round((g + m) * 255), round((b + m) * 255)
+
+
+def max_rgb_value(r, g, b):
+    v = max(r, g, b)
+    if not v:
+        return 255, 255, 255
+    return round(r / v * 255), round(g / v * 255), round(b / v * 255)
+
+
+def HSV_value_max(pixel_data):
+    return tuple(max_rgb_value(*color) for color in pixel_data)
+
 
 def bright(color: tuple) -> tuple:
     return tuple(map(lambda x: min((x + 20), 255), color))
@@ -50,11 +98,24 @@ class FillerGenerator(object):
         return ''.join((chr(randint(9600, 9631)) for _ in range(width)))
 
     @classmethod
-    def generate(cls, width: int, mode: str, chars=None) -> str:
+    def generate_hsv_text(cls, width: int, pixel_data=None):
+        assert pixel_data is not None, 'Bug found in FillerGenerator'
+        # chars = ' .\'`^",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$' if not chars else chars
+        # chars = ' .:-=+*#%@' if not chars else chars
+        # chars = ' .`´\'-:·¸╴╶◜◝◞◟◦,┈┄;╌╷"~─╺▵▹▿◃◠◡!^_°¹╵╸◌²»┉┌┐╭╮▱▻◅/\\r³┅┊╯╰╼▏▕▫▴▸▾◂()*+<>?|└┘╾▁▔△▷◁◽v┆╍╎╻▭▯cx┬◇◊◬◸◹◺◿7=Y[ijlz│┍┑┴╒╕▽○◻L]nsu━┕┙═╘╛╱╲╹▢◯1JTtwy{}º►◄Cfo┎┒├┤┭┮╓╖░□V┵┶▰◎◴◵◶◷24FISXhk±µ┖┚◭◮3Zam┰╙╜╤╥◈◖◗%5APUepq┏┓┝┥┯┼╔╗╞╡╽◔◫◰◱◲◳$K┷┸╧╨╿▪69GObd┋┗┛╚╝▂▎▖▗▘▝&0H┱┲DEQg¼┇┟┧┽┾╏╦▬▮8MRW½┞┦┹┺▲▶▼◀◆◢◣◤◥#N¾┳╩◾¶┢┪┿╁╪◍◐◑◒◓B┃┡┩┻╀║╅╆╟╢╳◉┠┨╃╄╈╠╣▒▤▥@▍◕◧◨◩◪┣┫╂╇╫▃▧▨╬╉╊◼◚◛▣╋●▦▩▀▄▌▐▚▞■▋▅◘▙▛▜▟▆▊▓◙▇▉█' if not chars else chars
+        # lenght = len(chars) - 1
+        # return ''.join(chars[round(max(color) / 255 * lenght)] for color in pixel_data)
+        lenght = len(hsv_chars) - 1
+        return ''.join(choice(hsv_chars[round(max(color) / 255 * lenght)]) for color in pixel_data)
+
+    @classmethod
+    def generate(cls, width: int, mode: str, chars=None, pixel_data=None) -> str:
         if mode == 'b':
             return cls.generate_blocks(width, chars)
         elif mode == 'rb':
             return cls.generate_random_block(width)
+        elif mode == 'hsv':
+            return cls.generate_hsv_text(width, pixel_data)
         else:
             return cls.generate_random_text(width, chars)
 
@@ -72,8 +133,10 @@ def image_data_to_text(pixel_data, width: int, height: int, filler_text: str) ->
 def image_to_text(image: Image, width: int, mode='r', chars=None) -> str:
     height = round(image.height * width / (image.width * 2))
     shrinked_img = image.resize((width, height), Image.ANTIALIAS)
-    random_text = FillerGenerator.generate(width * height, mode, chars)
     pixel_data = shrinked_img.getdata()
+    random_text = FillerGenerator.generate(width * height, mode, chars, pixel_data)
+    if mode == 'hsv':
+        pixel_data = HSV_value_max(pixel_data)
     return image_data_to_text(pixel_data, width, height, random_text)
 
 
@@ -92,7 +155,9 @@ def image_to_timage(image: Image, width: int, mode='r', chars=None) -> Image:
     height = round(image.height * (width * 6 / image.width) / 8)
     shrinked_img = image.resize((width, height), Image.ANTIALIAS)
     pixel_data = shrinked_img.getdata()
-    random_text = FillerGenerator.generate(width * height, mode, chars)
+    random_text = FillerGenerator.generate(width * height, mode, chars, pixel_data)
+    if mode == 'hsv':
+        pixel_data = HSV_value_max(pixel_data)
     return image_data_to_timage(pixel_data, width, height, random_text)
 
 
